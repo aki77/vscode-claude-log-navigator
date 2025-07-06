@@ -2,6 +2,8 @@
 
 A Visual Studio Code extension that helps you navigate and view Claude Code logs directly within your workspace. This extension automatically detects Claude projects and provides an intuitive interface to browse conversation history, analyze usage statistics, and review detailed message content.
 
+![Demo](https://i.gyazo.com/17530d1f1c5ccb2e48317f9aea78f9e1.png)
+
 ## Features
 
 - **Automatic Project Detection**: Automatically detects Claude projects in your workspace and loads corresponding log files
