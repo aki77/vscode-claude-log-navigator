@@ -246,7 +246,7 @@ export class LogDetailPanel {
 
   private _renderUsageInfo(message: TranscriptEntry): string {
     const usage = message.message?.usage;
-    if (!usage) return '';
+    if (!usage) {return '';}
     
     const model = message.message?.model || 'unknown';
     const serviceTier = usage.service_tier;
