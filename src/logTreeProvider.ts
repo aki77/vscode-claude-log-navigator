@@ -1,0 +1,203 @@
+import * as vscode from 'vscode';
+import { LogSession, TranscriptEntry, DateFilter } from './models';
+import { LogFileParser } from './logFileParser';
+import { ProjectDetector } from './projectDetector';
+
+export class LogTreeProvider implements vscode.TreeDataProvider<TreeItem> {
+  private _onDidChangeTreeData: vscode.EventEmitter<TreeItem | undefined | null | void> = new vscode.EventEmitter<TreeItem | undefined | null | void>();
+  readonly onDidChangeTreeData: vscode.Event<TreeItem | undefined | null | void> = this._onDidChangeTreeData.event;
+
+  private sessions: LogSession[] = [];
+  private projectDetector: ProjectDetector;
+  private logFileParser?: LogFileParser;
+  private dateFilter?: DateFilter;
+
+  constructor() {
+    this.projectDetector = new ProjectDetector();
+    this.initialize();
+  }
+
+  private async initialize(): Promise<void> {
+    console.log('LogTreeProvider: Initializing...');
+    const projectPath = await this.projectDetector.detectCurrentProject();
+    console.log('LogTreeProvider: Project path:', projectPath);
+    
+    if (projectPath) {
+      const config = vscode.workspace.getConfiguration('claudeLogNavigator');
+      const maxFiles = config.get<number>('maxFiles', 500);
+      this.logFileParser = new LogFileParser(projectPath, maxFiles);
+      await this.loadSessions();
+      console.log('LogTreeProvider: Loaded sessions:', this.sessions.length);
+    } else {
+      console.log('LogTreeProvider: No project path found');
+    }
+  }
+
+  async refresh(): Promise<void> {
+    await this.initialize();
+    this._onDidChangeTreeData.fire();
+  }
+
+  async applyDateFilter(filter: DateFilter): Promise<void> {
+    this.dateFilter = filter;
+    await this.loadSessions();
+    this._onDidChangeTreeData.fire();
+  }
+
+  async clearFilter(): Promise<void> {
+    this.dateFilter = undefined;
+    await this.loadSessions();
+    this._onDidChangeTreeData.fire();
+  }
+
+  private async loadSessions(): Promise<void> {
+    if (!this.logFileParser) {
+      this.sessions = [];
+      return;
+    }
+
+    try {
+      this.sessions = await this.logFileParser.parseLogFiles(this.dateFilter);
+    } catch (error) {
+      console.error('Failed to load sessions:', error);
+      this.sessions = [];
+    }
+  }
+
+  getTreeItem(element: TreeItem): vscode.TreeItem {
+    return element;
+  }
+
+  getChildren(element?: TreeItem): Thenable<TreeItem[]> {
+    console.log('LogTreeProvider: getChildren called, element:', element ? 'exists' : 'null', 'sessions:', this.sessions.length);
+    
+    if (!element) {
+      // Root level - return sessions
+      const sessionItems = this.sessions.map(session => new SessionTreeItem(session));
+      console.log('LogTreeProvider: Returning session items:', sessionItems.length);
+      return Promise.resolve(sessionItems);
+    } else if (element instanceof SessionTreeItem) {
+      // Session level - return messages
+      const messageItems = element.session.messages.map(message => new MessageTreeItem(message));
+      console.log('LogTreeProvider: Returning message items:', messageItems.length);
+      return Promise.resolve(messageItems);
+    }
+
+    return Promise.resolve([]);
+  }
+
+  getSession(sessionId: string): LogSession | undefined {
+    return this.sessions.find(s => s.sessionId === sessionId);
+  }
+
+  getMessage(sessionId: string, messageId: string): TranscriptEntry | undefined {
+    const session = this.getSession(sessionId);
+    return session?.messages.find(m => m.uuid === messageId);
+  }
+
+  updateMaxFiles(maxFiles: number): void {
+    if (this.logFileParser) {
+      this.logFileParser.updateMaxFiles(maxFiles);
+    }
+  }
+}
+
+export abstract class TreeItem extends vscode.TreeItem {
+  constructor(label: string, collapsibleState: vscode.TreeItemCollapsibleState) {
+    super(label, collapsibleState);
+  }
+}
+
+export class SessionTreeItem extends TreeItem {
+  constructor(public readonly session: LogSession) {
+    const duration = session.endTime.getTime() - session.startTime.getTime();
+    const durationMinutes = Math.round(duration / (1000 * 60));
+    
+    // Include summary in the main label
+    const timeLabel = `${session.startTime.toLocaleDateString()} ${session.startTime.toLocaleTimeString()}`;
+    const statsLabel = `(${session.messages.length} msgs, ${session.totalTokens} tokens, ${durationMinutes}min)`;
+    
+    super(
+      `${timeLabel} ${statsLabel}`,
+      vscode.TreeItemCollapsibleState.Collapsed
+    );
+
+    this.description = session.summary;
+    this.tooltip = `${session.summary}\n\nSession ID: ${session.sessionId}\nMessages: ${session.messages.length}\nTokens: ${session.totalTokens}\nDuration: ${durationMinutes} minutes`;
+    this.iconPath = new vscode.ThemeIcon('history');
+    this.contextValue = 'logSession';
+  }
+}
+
+export class MessageTreeItem extends TreeItem {
+  constructor(public readonly message: TranscriptEntry) {
+    super(
+      `${new Date(message.timestamp).toLocaleTimeString()} - ${message.type}`,
+      vscode.TreeItemCollapsibleState.None
+    );
+
+    this.description = this.getMessagePreview();
+    this.tooltip = this.getMessageTooltip();
+    this.iconPath = this.getMessageIcon();
+    this.contextValue = 'logMessage';
+    
+    // Store session ID and message ID for commands
+    this.command = {
+      command: 'claudeLogNavigator.openLogDetail',
+      title: 'Open Log Detail',
+      arguments: [this.message]
+    };
+  }
+
+  private getMessagePreview(): string {
+    let content = '';
+    const messageContent = this.message.message?.content;
+    
+    if (typeof messageContent === 'string') {
+      content = messageContent;
+    } else if (Array.isArray(messageContent)) {
+      const textContent = messageContent.find(item => item.type === 'text');
+      if (textContent?.text) {
+        content = textContent.text;
+      } else {
+        // Show tool use info if no text content
+        const toolUse = messageContent.find(item => item.type === 'tool_use');
+        if (toolUse) {
+          content = `Tool: ${toolUse.name}`;
+        } else {
+          content = `${messageContent.length} content items`;
+        }
+      }
+    } else {
+      content = 'No content';
+    }
+    
+    return content.length > 50 ? content.substring(0, 50) + '...' : content;
+  }
+
+  private getMessageTooltip(): string {
+    let tooltip = `Type: ${this.message.type}\nTime: ${new Date(this.message.timestamp).toLocaleString()}`;
+    
+    const usage = this.message.message?.usage;
+    if (usage) {
+      const totalTokens = usage.input_tokens + usage.output_tokens;
+      tooltip += `\nTokens: ${totalTokens} (${usage.input_tokens} in, ${usage.output_tokens} out)`;
+      if (usage.cache_creation_input_tokens) {
+        tooltip += `\nCache creation: ${usage.cache_creation_input_tokens}`;
+      }
+    }
+    
+    return tooltip;
+  }
+
+  private getMessageIcon(): vscode.ThemeIcon {
+    switch (this.message.type) {
+      case 'user':
+        return new vscode.ThemeIcon('account');
+      case 'assistant':
+        return new vscode.ThemeIcon('robot');
+      default:
+        return new vscode.ThemeIcon('comment');
+    }
+  }
+}

@@ -1,7 +1,7 @@
 {
   "name": "claude-log-navigator",
-  "displayName": "claude-log-navigator",
-  "description": "",
+  "displayName": "Claude Log Navigator",
+  "description": "Navigate and view Claude Code logs in VSCode",
   "version": "0.0.1",
   "engines": {
     "vscode": "^1.101.0"
@@ -12,12 +12,82 @@
   "activationEvents": [],
   "main": "./dist/extension.js",
   "contributes": {
+    "viewsContainers": {
+      "panel": [
+        {
+          "id": "claudeLogPanel",
+          "title": "Claude Logs",
+          "icon": "$(history)"
+        }
+      ]
+    },
+    "views": {
+      "claudeLogPanel": [
+        {
+          "id": "claudeLogNavigator",
+          "name": "Claude Code Logs"
+        }
+      ]
+    },
     "commands": [
       {
-        "command": "claude-log-navigator.helloWorld",
-        "title": "Hello World"
+        "command": "claudeLogNavigator.refresh",
+        "title": "Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "claudeLogNavigator.filterByDate",
+        "title": "Filter by Date",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "claudeLogNavigator.openLogDetail",
+        "title": "Open Log Detail"
+      },
+      {
+        "command": "claudeLogNavigator.clearFilter",
+        "title": "Clear Filter",
+        "icon": "$(clear-all)"
       }
-    ]
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "claudeLogNavigator.refresh",
+          "when": "view == claudeLogNavigator",
+          "group": "navigation"
+        },
+        {
+          "command": "claudeLogNavigator.filterByDate",
+          "when": "view == claudeLogNavigator",
+          "group": "navigation"
+        },
+        {
+          "command": "claudeLogNavigator.clearFilter",
+          "when": "view == claudeLogNavigator",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "claudeLogNavigator.openLogDetail",
+          "when": "view == claudeLogNavigator && viewItem == logMessage",
+          "group": "navigation"
+        }
+      ]
+    }
+  },
+  "configuration": {
+    "title": "Claude Log Navigator",
+    "properties": {
+      "claudeLogNavigator.maxFiles": {
+        "type": "number",
+        "default": 500,
+        "minimum": 10,
+        "maximum": 10000,
+        "description": "Maximum number of recent log files to load"
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "pnpm run package",
