@@ -11,31 +11,60 @@ export class LogTreeProvider implements vscode.TreeDataProvider<TreeItem> {
   private projectDetector: ProjectDetector;
   private logFileParser?: LogFileParser;
   private dateFilter?: DateFilter;
+  private initialized: boolean = false;
+  private initializing: boolean = false;
+  private initializationError?: string;
 
   constructor() {
     this.projectDetector = new ProjectDetector();
-    this.initialize();
+    // initialize() call removed - now lazy loaded
   }
 
   private async initialize(): Promise<void> {
     console.log('LogTreeProvider: Initializing...');
-    const projectPath = await this.projectDetector.detectCurrentProject();
-    console.log('LogTreeProvider: Project path:', projectPath);
-    
-    if (projectPath) {
-      const config = vscode.workspace.getConfiguration('claudeLogNavigator');
-      const maxFiles = config.get<number>('maxFiles', 500);
-      this.logFileParser = new LogFileParser(projectPath, maxFiles);
-      await this.loadSessions();
-      console.log('LogTreeProvider: Loaded sessions:', this.sessions.length);
-    } else {
-      console.log('LogTreeProvider: No project path found');
+    try {
+      const projectPath = await this.projectDetector.detectCurrentProject();
+      console.log('LogTreeProvider: Project path:', projectPath);
+      
+      if (projectPath) {
+        const config = vscode.workspace.getConfiguration('claudeLogNavigator');
+        const maxFiles = config.get<number>('maxFiles', 500);
+        this.logFileParser = new LogFileParser(projectPath, maxFiles);
+        await this.loadSessions();
+        console.log('LogTreeProvider: Loaded sessions:', this.sessions.length);
+        this.initialized = true;
+        this.initializationError = undefined;
+      } else {
+        console.log('LogTreeProvider: No project path found');
+        this.initializationError = 'No Claude project found in current workspace';
+        this.initialized = true;
+      }
+    } catch (error) {
+      console.error('LogTreeProvider: Initialization failed:', error);
+      this.initializationError = error instanceof Error ? error.message : 'Unknown initialization error';
+      this.initialized = true;
+    } finally {
+      this.initializing = false;
     }
   }
 
-  async refresh(): Promise<void> {
+  private async lazyInitialize(): Promise<void> {
+    if (this.initialized || this.initializing) {
+      return;
+    }
+    
+    this.initializing = true;
+    this._onDidChangeTreeData.fire(); // Show loading state
+    
     await this.initialize();
-    this._onDidChangeTreeData.fire();
+    this._onDidChangeTreeData.fire(); // Show final state
+  }
+
+  async refresh(): Promise<void> {
+    this.initialized = false;
+    this.initializing = false;
+    this.initializationError = undefined;
+    await this.lazyInitialize();
   }
 
   async applyDateFilter(filter: DateFilter): Promise<void> {
@@ -69,10 +98,25 @@ export class LogTreeProvider implements vscode.TreeDataProvider<TreeItem> {
   }
 
   getChildren(element?: TreeItem): Thenable<TreeItem[]> {
-    console.log('LogTreeProvider: getChildren called, element:', element ? 'exists' : 'null', 'sessions:', this.sessions.length);
+    console.log('LogTreeProvider: getChildren called, element:', element ? 'exists' : 'null', 'initialized:', this.initialized, 'initializing:', this.initializing);
     
     if (!element) {
-      // Root level - return sessions
+      // Root level - handle initialization state
+      if (this.initializing) {
+        return Promise.resolve([new LoadingTreeItem()]);
+      }
+      
+      if (this.initializationError) {
+        return Promise.resolve([new ErrorTreeItem(this.initializationError)]);
+      }
+      
+      if (!this.initialized) {
+        // Trigger lazy initialization
+        this.lazyInitialize();
+        return Promise.resolve([new LoadingTreeItem()]);
+      }
+      
+      // Return sessions
       const sessionItems = this.sessions.map(session => new SessionTreeItem(session));
       console.log('LogTreeProvider: Returning session items:', sessionItems.length);
       return Promise.resolve(sessionItems);
@@ -199,5 +243,24 @@ export class MessageTreeItem extends TreeItem {
       default:
         return new vscode.ThemeIcon('comment');
     }
+  }
+}
+
+export class LoadingTreeItem extends TreeItem {
+  constructor() {
+    super('Loading Claude logs...', vscode.TreeItemCollapsibleState.None);
+    this.iconPath = new vscode.ThemeIcon('loading~spin');
+    this.description = 'Please wait';
+    this.contextValue = 'loading';
+  }
+}
+
+export class ErrorTreeItem extends TreeItem {
+  constructor(errorMessage: string) {
+    super('Failed to load logs', vscode.TreeItemCollapsibleState.None);
+    this.iconPath = new vscode.ThemeIcon('error');
+    this.description = errorMessage;
+    this.tooltip = `Error: ${errorMessage}`;
+    this.contextValue = 'error';
   }
 }
