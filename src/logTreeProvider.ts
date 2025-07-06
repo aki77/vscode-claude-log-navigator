@@ -175,10 +175,11 @@ export class SessionTreeItem extends TreeItem {
 
 export class MessageTreeItem extends TreeItem {
   constructor(public readonly message: TranscriptEntry) {
-    super(
-      `${new Date(message.timestamp).toLocaleTimeString()} - ${message.type}`,
-      vscode.TreeItemCollapsibleState.None
-    );
+    const label = message.type === 'summary' 
+      ? `Summary - ${message.summary || 'Session Summary'}`
+      : `${message.timestamp ? new Date(message.timestamp).toLocaleTimeString() : 'No time'} - ${message.type}`;
+    
+    super(label, vscode.TreeItemCollapsibleState.None);
 
     this.description = this.getMessagePreview();
     this.tooltip = this.getMessageTooltip();
@@ -194,8 +195,18 @@ export class MessageTreeItem extends TreeItem {
   }
 
   private getMessagePreview(): string {
+    // Handle summary entries
+    if (this.message.type === 'summary') {
+      return this.message.summary || 'Session summary';
+    }
+    
+    // Handle entries without message field
+    if (!this.message.message) {
+      return 'System entry (no message content)';
+    }
+    
     let content = '';
-    const messageContent = this.message.message?.content;
+    const messageContent = this.message.message.content;
     
     if (typeof messageContent === 'string') {
       content = messageContent;
@@ -220,9 +231,37 @@ export class MessageTreeItem extends TreeItem {
   }
 
   private getMessageTooltip(): string {
-    let tooltip = `Type: ${this.message.type}\nTime: ${new Date(this.message.timestamp).toLocaleString()}`;
+    let tooltip = `Type: ${this.message.type}`;
     
-    const usage = this.message.message?.usage;
+    // Add timestamp if available
+    if (this.message.timestamp) {
+      tooltip += `\nTime: ${new Date(this.message.timestamp).toLocaleString()}`;
+    }
+    
+    // Handle summary entries
+    if (this.message.type === 'summary') {
+      if (this.message.leafUuid) {
+        tooltip += `\nLeaf UUID: ${this.message.leafUuid}`;
+      }
+      if (this.message.summary) {
+        tooltip += `\nSummary: ${this.message.summary}`;
+      }
+      return tooltip;
+    }
+    
+    // Handle entries without message field
+    if (!this.message.message) {
+      if (this.message.uuid) {
+        tooltip += `\nUUID: ${this.message.uuid}`;
+      }
+      if (this.message.sessionId) {
+        tooltip += `\nSession ID: ${this.message.sessionId}`;
+      }
+      tooltip += `\nSystem entry (no message content)`;
+      return tooltip;
+    }
+    
+    const usage = this.message.message.usage;
     if (usage) {
       const totalTokens = usage.input_tokens + usage.output_tokens;
       tooltip += `\nTokens: ${totalTokens} (${usage.input_tokens} in, ${usage.output_tokens} out)`;
@@ -240,7 +279,13 @@ export class MessageTreeItem extends TreeItem {
         return new vscode.ThemeIcon('account');
       case 'assistant':
         return new vscode.ThemeIcon('robot');
+      case 'summary':
+        return new vscode.ThemeIcon('notebook');
       default:
+        // Show gear icon for entries without message field
+        if (!this.message.message) {
+          return new vscode.ThemeIcon('gear');
+        }
         return new vscode.ThemeIcon('comment');
     }
   }

@@ -60,12 +60,11 @@ export class LogFileParser {
       for (const line of lines) {
         try {
           const entry = JSON.parse(line) as TranscriptEntry;
-          // Skip entries without message field
-          if (!entry.message) {
-            console.warn(`Entry without message field in ${filePath}:`, entry);
-            continue;
-          }
+          // Include all entries, even those without message field
           messages.push(entry);
+          if (!entry.message) {
+            console.info(`Entry without message field in ${filePath} (uuid: ${entry.uuid})`);
+          }
         } catch (error) {
           console.warn(`Failed to parse line in ${filePath}:`, error);
         }
@@ -76,10 +75,35 @@ export class LogFileParser {
       }
 
       // Since it's 1 session per file, all messages should have the same sessionId
-      const sessionId = messages[0].sessionId;
-      const startTime = new Date(messages[0].timestamp);
-      const endTime = new Date(messages[messages.length - 1].timestamp);
+      // Handle cases where sessionId might not exist (e.g., summary entries)
+      const sessionId = messages.find(msg => msg.sessionId)?.sessionId || 'unknown';
       
+      // Find messages with valid timestamps
+      const messagesWithTimestamp = messages.filter(msg => msg.timestamp);
+      
+      let startTime: Date;
+      let endTime: Date;
+      
+      if (messagesWithTimestamp.length > 0) {
+        startTime = new Date(messagesWithTimestamp[0].timestamp!);
+        endTime = new Date(messagesWithTimestamp[messagesWithTimestamp.length - 1].timestamp!);
+        
+        // Check if dates are valid
+        if (isNaN(startTime.getTime())) {
+          console.warn(`Invalid start timestamp in ${filePath}: ${messagesWithTimestamp[0].timestamp}`);
+          startTime = new Date(); // Use current time as fallback
+        }
+        if (isNaN(endTime.getTime())) {
+          console.warn(`Invalid end timestamp in ${filePath}: ${messagesWithTimestamp[messagesWithTimestamp.length - 1].timestamp}`);
+          endTime = new Date(); // Use current time as fallback
+        }
+      } else {
+        // No messages with timestamp found, use file modification time as fallback
+        console.warn(`No valid timestamps found in ${filePath}, using file modification time`);
+        const stats = fs.statSync(filePath);
+        startTime = endTime = stats.mtime;
+      }
+
       // Calculate total tokens from usage info
       const totalTokens = messages.reduce((sum, msg) => {
         const usage = msg.message?.usage;
@@ -88,7 +112,7 @@ export class LogFileParser {
         }
         return sum;
       }, 0);
-      
+
       const summary = this.generateSessionSummary(messages);
 
       return {
@@ -153,25 +177,36 @@ export class LogFileParser {
     if (userMessage && userMessage.message) {
       let content = '';
       const messageContent = userMessage.message.content;
-      
+
       if (typeof messageContent === 'string') {
         content = messageContent;
       } else if (Array.isArray(messageContent)) {
         const textContent = messageContent.find(item => item.type === 'text');
         content = textContent?.text || '';
       }
-      
+
       // Return first 100 characters as summary
       if (content.length > 0) {
         return content.length > 100 ? content.substring(0, 100) + '...' : content;
       }
     }
-    
+
+    // Check if there's a summary entry
+    const summaryEntry = messages.find(msg => msg.type === 'summary');
+    if (summaryEntry && summaryEntry.summary) {
+      return summaryEntry.summary;
+    }
+
     // Generate more informative summary
     const userMessages = messages.filter(msg => msg.type === 'user').length;
     const assistantMessages = messages.filter(msg => msg.type === 'assistant').length;
-    const startTime = new Date(messages[0].timestamp);
+    const summaryMessages = messages.filter(msg => msg.type === 'summary').length;
     
-    return `${userMessages} user, ${assistantMessages} assistant messages - ${startTime.toLocaleDateString()}`;
+    const firstMessageWithTimestamp = messages.find(msg => msg.timestamp);
+    const dateStr = firstMessageWithTimestamp ? 
+      new Date(firstMessageWithTimestamp.timestamp!).toLocaleDateString() : 
+      'Unknown date';
+
+    return `${userMessages} user, ${assistantMessages} assistant${summaryMessages ? `, ${summaryMessages} summary` : ''} messages - ${dateStr}`;
   }
 }

@@ -1,16 +1,19 @@
 export interface TranscriptEntry {
   parentUuid?: string;
-  isSidechain: boolean;
-  userType: string;
-  cwd: string;
-  sessionId: string;
-  version: string;
-  type: 'user' | 'assistant';
-  uuid: string;
-  timestamp: string;
-  message: Message;
+  isSidechain?: boolean;
+  userType?: string;
+  cwd?: string;
+  sessionId?: string;
+  version?: string;
+  type: 'user' | 'assistant' | 'summary';
+  uuid?: string;
+  timestamp?: string;
+  message?: Message;
   requestId?: string;
   toolUseResult?: any;
+  // Summary-specific fields
+  summary?: string;
+  leafUuid?: string;
 }
 
 export interface Message {

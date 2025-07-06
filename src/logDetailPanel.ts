@@ -62,8 +62,13 @@ export class LogDetailPanel {
   }
 
   private _getHtmlForWebview(webview: vscode.Webview, message: TranscriptEntry): string {
+    // Handle summary entries specially
+    if (message.type === 'summary') {
+      return this._renderSummaryEntry(message);
+    }
+    
     const content = this._renderContent(message.message?.content);
-    const timestamp = new Date(message.timestamp).toLocaleString();
+    const timestamp = message.timestamp ? new Date(message.timestamp).toLocaleString() : 'No timestamp';
     const usage = message.message?.usage ? `
       <div class="usage-info">
         <h3>Token Usage</h3>
@@ -141,10 +146,10 @@ export class LogDetailPanel {
         <div class="header">
           <h1>${message.type.toUpperCase()}</h1>
           <div class="metadata">
-            <p>Session ID: ${message.sessionId}</p>
+            ${message.sessionId ? `<p>Session ID: ${message.sessionId}</p>` : ''}
             <p>Timestamp: ${timestamp}</p>
-            <p>UUID: ${message.uuid}</p>
-            <p>Role: ${message.message?.role || 'unknown'}</p>
+            ${message.uuid ? `<p>UUID: ${message.uuid}</p>` : ''}
+            ${message.message?.role ? `<p>Role: ${message.message.role}</p>` : ''}
             ${message.message?.model ? `<p>Model: ${message.message.model}</p>` : ''}
             ${message.requestId ? `<p>Request ID: ${message.requestId}</p>` : ''}
           </div>
@@ -230,5 +235,78 @@ export class LogDetailPanel {
     text = text.replace(/\n/g, '<br>');
     
     return `<p>${text}</p>`;
+  }
+
+  private _renderSummaryEntry(message: TranscriptEntry): string {
+    return `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Session Summary</title>
+        <style>
+          body {
+            font-family: var(--vscode-font-family);
+            font-size: var(--vscode-font-size);
+            color: var(--vscode-foreground);
+            background-color: var(--vscode-editor-background);
+            padding: 20px;
+            line-height: 1.6;
+          }
+          .header {
+            border-bottom: 1px solid var(--vscode-panel-border);
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+          }
+          .summary-header {
+            background: linear-gradient(45deg, var(--vscode-textLink-foreground), var(--vscode-button-background));
+            color: var(--vscode-button-foreground);
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            text-align: center;
+          }
+          .summary-content {
+            background-color: var(--vscode-editor-inactiveSelectionBackground);
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 4px solid var(--vscode-textLink-foreground);
+          }
+          .metadata {
+            color: var(--vscode-descriptionForeground);
+            font-size: 0.9em;
+            background-color: var(--vscode-textBlockQuote-background);
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 20px;
+          }
+          .summary-icon {
+            font-size: 2em;
+            margin-bottom: 10px;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="summary-header">
+          <div class="summary-icon">📄</div>
+          <h1>Session Summary</h1>
+        </div>
+        
+        <div class="summary-content">
+          <h2>Summary</h2>
+          <p>${message.summary || 'No summary available'}</p>
+        </div>
+
+        <div class="metadata">
+          <h3>Metadata</h3>
+          ${message.leafUuid ? `<p><strong>Leaf UUID:</strong> ${message.leafUuid}</p>` : ''}
+          ${message.type ? `<p><strong>Type:</strong> ${message.type}</p>` : ''}
+          ${message.sessionId ? `<p><strong>Session ID:</strong> ${message.sessionId}</p>` : ''}
+          ${message.uuid ? `<p><strong>UUID:</strong> ${message.uuid}</p>` : ''}
+        </div>
+      </body>
+      </html>
+    `;
   }
 }
