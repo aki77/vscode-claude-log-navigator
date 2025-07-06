@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { TranscriptEntry, ContentItem } from './models';
+import { calculateCost, formatCost, CostBreakdown } from './costCalculator';
 
 export class LogDetailPanel {
   public static currentPanel: LogDetailPanel | undefined;
@@ -69,15 +70,7 @@ export class LogDetailPanel {
     
     const content = this._renderContent(message.message?.content);
     const timestamp = message.timestamp ? new Date(message.timestamp).toLocaleString() : 'No timestamp';
-    const usage = message.message?.usage ? `
-      <div class="usage-info">
-        <h3>Token Usage</h3>
-        <p>Input: ${message.message.usage.input_tokens}</p>
-        <p>Output: ${message.message.usage.output_tokens}</p>
-        <p>Total: ${message.message.usage.input_tokens + message.message.usage.output_tokens}</p>
-        ${message.message.usage.cache_creation_input_tokens ? `<p>Cache Creation: ${message.message.usage.cache_creation_input_tokens}</p>` : ''}
-      </div>
-    ` : '';
+    const usage = message.message?.usage ? this._renderUsageInfo(message) : '';
 
     return `
       <!DOCTYPE html>
@@ -116,6 +109,20 @@ export class LogDetailPanel {
           .usage-info h3 {
             margin-top: 0;
             color: var(--vscode-textLink-foreground);
+          }
+          .cost-info {
+            background-color: var(--vscode-badge-background);
+            color: var(--vscode-badge-foreground);
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+          }
+          .cost-breakdown {
+            font-size: 0.9em;
+            margin-top: 8px;
+          }
+          .cost-breakdown div {
+            margin: 2px 0;
           }
           .tool-use {
             background-color: var(--vscode-textBlockQuote-background);
@@ -235,6 +242,44 @@ export class LogDetailPanel {
     text = text.replace(/\n/g, '<br>');
     
     return `<p>${text}</p>`;
+  }
+
+  private _renderUsageInfo(message: TranscriptEntry): string {
+    const usage = message.message?.usage;
+    if (!usage) return '';
+    
+    const model = message.message?.model || 'unknown';
+    const serviceTier = usage.service_tier;
+    
+    let costInfo = '';
+    if (usage.input_tokens || usage.output_tokens) {
+      const costBreakdown = calculateCost(usage, model, serviceTier);
+      costInfo = `
+        <div class="cost-info">
+          <strong>Cost: ${formatCost(costBreakdown.totalCost)}</strong>
+          <div class="cost-breakdown">
+            <div>Input (${usage.input_tokens} tokens): ${formatCost(costBreakdown.inputCost)}</div>
+            <div>Output (${usage.output_tokens} tokens): ${formatCost(costBreakdown.outputCost)}</div>
+            ${costBreakdown.cacheCreationCost > 0 ? `<div>Cache Creation (${usage.cache_creation_input_tokens} tokens): ${formatCost(costBreakdown.cacheCreationCost)}</div>` : ''}
+            ${costBreakdown.cacheReadCost > 0 ? `<div>Cache Read (${usage.cache_read_input_tokens} tokens): ${formatCost(costBreakdown.cacheReadCost)}</div>` : ''}
+            ${serviceTier ? `<div>Service Tier: ${serviceTier}</div>` : ''}
+            <div>Model: ${model}</div>
+          </div>
+        </div>
+      `;
+    }
+    
+    return `
+      <div class="usage-info">
+        <h3>Token Usage</h3>
+        <p>Input: ${usage.input_tokens}</p>
+        <p>Output: ${usage.output_tokens}</p>
+        <p>Total: ${usage.input_tokens + usage.output_tokens}</p>
+        ${usage.cache_creation_input_tokens ? `<p>Cache Creation: ${usage.cache_creation_input_tokens}</p>` : ''}
+        ${usage.cache_read_input_tokens ? `<p>Cache Read: ${usage.cache_read_input_tokens}</p>` : ''}
+        ${costInfo}
+      </div>
+    `;
   }
 
   private _renderSummaryEntry(message: TranscriptEntry): string {

@@ -44,6 +44,7 @@ export interface UsageInfo {
   cache_read_input_tokens?: number;
   output_tokens: number;
   service_tier?: string;
+  cost?: number;
 }
 
 export interface LogSession {
@@ -52,6 +53,7 @@ export interface LogSession {
   startTime: Date;
   endTime: Date;
   totalTokens: number;
+  totalCost: number;
   summary: string;
 }
 

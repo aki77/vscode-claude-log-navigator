@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { LogSession, TranscriptEntry, DateFilter } from './models';
 import { LogFileParser } from './logFileParser';
 import { ProjectDetector } from './projectDetector';
+import { formatCostSummary } from './costCalculator';
 
 export class LogTreeProvider implements vscode.TreeDataProvider<TreeItem> {
   private _onDidChangeTreeData: vscode.EventEmitter<TreeItem | undefined | null | void> = new vscode.EventEmitter<TreeItem | undefined | null | void>();
@@ -159,7 +160,8 @@ export class SessionTreeItem extends TreeItem {
     
     // Include summary in the main label
     const timeLabel = `${session.startTime.toLocaleDateString()} ${session.startTime.toLocaleTimeString()}`;
-    const statsLabel = `(${session.messages.length} msgs, ${session.totalTokens} tokens, ${durationMinutes}min)`;
+    const costLabel = session.totalCost > 0 ? `, ${formatCostSummary(session.totalCost)}` : '';
+    const statsLabel = `(${session.messages.length} msgs, ${session.totalTokens} tokens, ${durationMinutes}min${costLabel})`;
     
     super(
       `${timeLabel} ${statsLabel}`,
@@ -167,7 +169,7 @@ export class SessionTreeItem extends TreeItem {
     );
 
     this.description = session.summary;
-    this.tooltip = `${session.summary}\n\nSession ID: ${session.sessionId}\nMessages: ${session.messages.length}\nTokens: ${session.totalTokens}\nDuration: ${durationMinutes} minutes`;
+    this.tooltip = `${session.summary}\n\nSession ID: ${session.sessionId}\nMessages: ${session.messages.length}\nTokens: ${session.totalTokens}\nCost: ${formatCostSummary(session.totalCost)}\nDuration: ${durationMinutes} minutes`;
     this.iconPath = new vscode.ThemeIcon('history');
     this.contextValue = 'logSession';
   }
@@ -267,6 +269,12 @@ export class MessageTreeItem extends TreeItem {
       tooltip += `\nTokens: ${totalTokens} (${usage.input_tokens} in, ${usage.output_tokens} out)`;
       if (usage.cache_creation_input_tokens) {
         tooltip += `\nCache creation: ${usage.cache_creation_input_tokens}`;
+      }
+      if (usage.cache_read_input_tokens) {
+        tooltip += `\nCache read: ${usage.cache_read_input_tokens}`;
+      }
+      if (usage.cost && usage.cost > 0) {
+        tooltip += `\nCost: ${formatCostSummary(usage.cost)}`;
       }
     }
     

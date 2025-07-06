@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { TranscriptEntry, LogSession, DateFilter } from './models';
+import { calculateCost } from './costCalculator';
 
 export class LogFileParser {
   private logDirectory: string;
@@ -104,14 +105,26 @@ export class LogFileParser {
         startTime = endTime = stats.mtime;
       }
 
-      // Calculate total tokens from usage info
-      const totalTokens = messages.reduce((sum, msg) => {
+      // Calculate total tokens and cost from usage info
+      let totalTokens = 0;
+      let totalCost = 0;
+
+      messages.forEach(msg => {
         const usage = msg.message?.usage;
         if (usage) {
-          return sum + usage.input_tokens + usage.output_tokens;
+          totalTokens += usage.input_tokens + usage.output_tokens;
+          
+          // Calculate cost for this message
+          const model = msg.message?.model || 'unknown';
+          const serviceTier = usage.service_tier;
+          
+          if (usage.input_tokens || usage.output_tokens) {
+            const costBreakdown = calculateCost(usage, model, serviceTier);
+            usage.cost = costBreakdown.totalCost;
+            totalCost += costBreakdown.totalCost;
+          }
         }
-        return sum;
-      }, 0);
+      });
 
       const summary = this.generateSessionSummary(messages);
 
@@ -121,6 +134,7 @@ export class LogFileParser {
         startTime,
         endTime,
         totalTokens,
+        totalCost,
         summary
       };
     } catch (error) {
