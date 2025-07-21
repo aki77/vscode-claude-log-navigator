@@ -177,9 +177,16 @@ export class SessionTreeItem extends TreeItem {
 
 export class MessageTreeItem extends TreeItem {
   constructor(public readonly message: TranscriptEntry) {
-    const label = message.type === 'summary' 
-      ? `Summary - ${message.summary || 'Session Summary'}`
-      : `${message.timestamp ? new Date(message.timestamp).toLocaleTimeString() : 'No time'} - ${message.type}`;
+    let label: string;
+    if (message.type === 'summary') {
+      label = `Summary - ${message.summary || 'Session Summary'}`;
+    } else if (message.type === 'system') {
+      const time = message.timestamp ? new Date(message.timestamp).toLocaleTimeString() : 'No time';
+      const level = message.level ? ` [${message.level}]` : '';
+      label = `${time} - System${level}`;
+    } else {
+      label = `${message.timestamp ? new Date(message.timestamp).toLocaleTimeString() : 'No time'} - ${message.type}`;
+    }
     
     super(label, vscode.TreeItemCollapsibleState.None);
 
@@ -196,10 +203,25 @@ export class MessageTreeItem extends TreeItem {
     };
   }
 
+  private stripAnsiCodes(text: string): string {
+    // Remove ANSI escape sequences
+    return text.replace(/\u001b\[[0-9;]*m/g, '');
+  }
+
   private getMessagePreview(): string {
     // Handle summary entries
     if (this.message.type === 'summary') {
       return this.message.summary || 'Session summary';
+    }
+    
+    // Handle system entries
+    if (this.message.type === 'system') {
+      if (this.message.content) {
+        // Remove ANSI codes and truncate
+        const cleanContent = this.stripAnsiCodes(this.message.content);
+        return cleanContent.length > 50 ? cleanContent.substring(0, 50) + '...' : cleanContent;
+      }
+      return 'System message';
     }
     
     // Handle entries without message field
@@ -240,6 +262,17 @@ export class MessageTreeItem extends TreeItem {
       tooltip += `\nTime: ${new Date(this.message.timestamp).toLocaleString()}`;
     }
     
+    // Add common metadata
+    if (this.message.gitBranch) {
+      tooltip += `\nGit Branch: ${this.message.gitBranch}`;
+    }
+    if (this.message.version) {
+      tooltip += `\nVersion: ${this.message.version}`;
+    }
+    if (this.message.cwd) {
+      tooltip += `\nCWD: ${this.message.cwd}`;
+    }
+    
     // Handle summary entries
     if (this.message.type === 'summary') {
       if (this.message.leafUuid) {
@@ -247,6 +280,24 @@ export class MessageTreeItem extends TreeItem {
       }
       if (this.message.summary) {
         tooltip += `\nSummary: ${this.message.summary}`;
+      }
+      return tooltip;
+    }
+    
+    // Handle system entries
+    if (this.message.type === 'system') {
+      if (this.message.level) {
+        tooltip += `\nLevel: ${this.message.level}`;
+      }
+      if (this.message.toolUseID) {
+        tooltip += `\nTool Use ID: ${this.message.toolUseID}`;
+      }
+      if (this.message.content) {
+        const cleanContent = this.stripAnsiCodes(this.message.content);
+        tooltip += `\nContent: ${cleanContent}`;
+      }
+      if (this.message.uuid) {
+        tooltip += `\nUUID: ${this.message.uuid}`;
       }
       return tooltip;
     }
@@ -289,6 +340,8 @@ export class MessageTreeItem extends TreeItem {
         return new vscode.ThemeIcon('robot');
       case 'summary':
         return new vscode.ThemeIcon('notebook');
+      case 'system':
+        return new vscode.ThemeIcon('gear');
       default:
         // Show gear icon for entries without message field
         if (!this.message.message) {

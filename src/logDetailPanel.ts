@@ -68,9 +68,15 @@ export class LogDetailPanel {
       return this._renderSummaryEntry(message);
     }
     
+    // Handle system entries specially
+    if (message.type === 'system') {
+      return this._renderSystemEntry(message);
+    }
+    
     const content = this._renderContent(message.message?.content);
     const timestamp = message.timestamp ? new Date(message.timestamp).toLocaleString() : 'No timestamp';
     const usage = message.message?.usage ? this._renderUsageInfo(message) : '';
+    const rawJson = JSON.stringify(message, null, 2);
 
     return `
       <!DOCTYPE html>
@@ -147,6 +153,55 @@ export class LogDetailPanel {
             padding: 2px 4px;
             border-radius: 2px;
           }
+          .raw-json-section {
+            margin-top: 30px;
+            border-top: 1px solid var(--vscode-panel-border);
+            padding-top: 20px;
+          }
+          .toggle-json-btn {
+            background-color: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+          }
+          .toggle-json-btn:hover {
+            background-color: var(--vscode-button-hoverBackground);
+          }
+          .json-content {
+            margin-top: 10px;
+            background-color: var(--vscode-editor-background);
+            border: 1px solid var(--vscode-panel-border);
+            border-radius: 4px;
+            padding: 15px;
+            overflow-x: auto;
+            max-height: 500px;
+            overflow-y: auto;
+          }
+          .json-content pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-break: break-word;
+          }
+          .arrow {
+            transition: transform 0.2s ease;
+            display: inline-block;
+          }
+          .arrow.down {
+            transform: rotate(90deg);
+          }
+          .ansi-bold { font-weight: bold; }
+          .ansi-red { color: #e74c3c; }
+          .ansi-green { color: #2ecc71; }
+          .ansi-yellow { color: #f1c40f; }
+          .ansi-blue { color: #3498db; }
+          .ansi-magenta { color: #9b59b6; }
+          .ansi-cyan { color: #1abc9c; }
         </style>
       </head>
       <body>
@@ -159,6 +214,10 @@ export class LogDetailPanel {
             ${message.message?.role ? `<p>Role: ${message.message.role}</p>` : ''}
             ${message.message?.model ? `<p>Model: ${message.message.model}</p>` : ''}
             ${message.requestId ? `<p>Request ID: ${message.requestId}</p>` : ''}
+            ${message.gitBranch ? `<p>Git Branch: ${message.gitBranch}</p>` : ''}
+            ${message.cwd ? `<p>CWD: ${message.cwd}</p>` : ''}
+            ${message.version ? `<p>Version: ${message.version}</p>` : ''}
+            ${message.userType ? `<p>User Type: ${message.userType}</p>` : ''}
           </div>
         </div>
         
@@ -167,6 +226,35 @@ export class LogDetailPanel {
         </div>
 
         ${usage}
+
+        <div class="raw-json-section">
+          <button class="toggle-json-btn" onclick="toggleJsonView()">
+            <span class="arrow">▶</span>
+            <span>Show Raw JSON</span>
+          </button>
+          <div class="json-content" id="json-content" style="display: none;">
+            <pre><code>${this._escapeHtml(rawJson)}</code></pre>
+          </div>
+        </div>
+
+        <script>
+          function toggleJsonView() {
+            const jsonContent = document.getElementById('json-content');
+            const button = document.querySelector('.toggle-json-btn');
+            const arrow = button.querySelector('.arrow');
+            const text = button.querySelector('span:last-child');
+            
+            if (jsonContent.style.display === 'none') {
+              jsonContent.style.display = 'block';
+              arrow.classList.add('down');
+              text.textContent = 'Hide Raw JSON';
+            } else {
+              jsonContent.style.display = 'none';
+              arrow.classList.remove('down');
+              text.textContent = 'Show Raw JSON';
+            }
+          }
+        </script>
       </body>
       </html>
     `;
@@ -283,6 +371,8 @@ export class LogDetailPanel {
   }
 
   private _renderSummaryEntry(message: TranscriptEntry): string {
+    const rawJson = JSON.stringify(message, null, 2);
+    
     return `
       <!DOCTYPE html>
       <html lang="en">
@@ -330,6 +420,48 @@ export class LogDetailPanel {
             font-size: 2em;
             margin-bottom: 10px;
           }
+          .raw-json-section {
+            margin-top: 30px;
+            border-top: 1px solid var(--vscode-panel-border);
+            padding-top: 20px;
+          }
+          .toggle-json-btn {
+            background-color: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+          }
+          .toggle-json-btn:hover {
+            background-color: var(--vscode-button-hoverBackground);
+          }
+          .json-content {
+            margin-top: 10px;
+            background-color: var(--vscode-editor-background);
+            border: 1px solid var(--vscode-panel-border);
+            border-radius: 4px;
+            padding: 15px;
+            overflow-x: auto;
+            max-height: 500px;
+            overflow-y: auto;
+          }
+          .json-content pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-break: break-word;
+          }
+          .arrow {
+            transition: transform 0.2s ease;
+            display: inline-block;
+          }
+          .arrow.down {
+            transform: rotate(90deg);
+          }
         </style>
       </head>
       <body>
@@ -350,6 +482,204 @@ export class LogDetailPanel {
           ${message.sessionId ? `<p><strong>Session ID:</strong> ${message.sessionId}</p>` : ''}
           ${message.uuid ? `<p><strong>UUID:</strong> ${message.uuid}</p>` : ''}
         </div>
+
+        <div class="raw-json-section">
+          <button class="toggle-json-btn" onclick="toggleJsonView()">
+            <span class="arrow">▶</span>
+            <span>Show Raw JSON</span>
+          </button>
+          <div class="json-content" id="json-content" style="display: none;">
+            <pre><code>${this._escapeHtml(rawJson)}</code></pre>
+          </div>
+        </div>
+
+        <script>
+          function toggleJsonView() {
+            const jsonContent = document.getElementById('json-content');
+            const button = document.querySelector('.toggle-json-btn');
+            const arrow = button.querySelector('.arrow');
+            const text = button.querySelector('span:last-child');
+            
+            if (jsonContent.style.display === 'none') {
+              jsonContent.style.display = 'block';
+              arrow.classList.add('down');
+              text.textContent = 'Hide Raw JSON';
+            } else {
+              jsonContent.style.display = 'none';
+              arrow.classList.remove('down');
+              text.textContent = 'Show Raw JSON';
+            }
+          }
+        </script>
+      </body>
+      </html>
+    `;
+  }
+
+  private _escapeHtml(text: string): string {
+    const map: { [key: string]: string } = {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#039;'
+    };
+    return text.replace(/[&<>"']/g, m => map[m]);
+  }
+
+  private _convertAnsiToHtml(text: string): string {
+    // Convert ANSI escape sequences to HTML
+    return text
+      .replace(/\u001b\[1m/g, '<span class="ansi-bold">')
+      .replace(/\u001b\[22m/g, '</span>')
+      .replace(/\u001b\[31m/g, '<span class="ansi-red">')
+      .replace(/\u001b\[32m/g, '<span class="ansi-green">')
+      .replace(/\u001b\[33m/g, '<span class="ansi-yellow">')
+      .replace(/\u001b\[34m/g, '<span class="ansi-blue">')
+      .replace(/\u001b\[35m/g, '<span class="ansi-magenta">')
+      .replace(/\u001b\[36m/g, '<span class="ansi-cyan">')
+      .replace(/\u001b\[39m/g, '</span>')
+      .replace(/\u001b\[0m/g, '</span>');
+  }
+
+  private _renderSystemEntry(message: TranscriptEntry): string {
+    const timestamp = message.timestamp ? new Date(message.timestamp).toLocaleString() : 'No timestamp';
+    const content = message.content ? this._convertAnsiToHtml(this._escapeHtml(message.content)) : 'No content';
+    const rawJson = JSON.stringify(message, null, 2);
+
+    return `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>System Log Detail</title>
+        <style>
+          body {
+            font-family: var(--vscode-font-family);
+            font-size: var(--vscode-font-size);
+            color: var(--vscode-foreground);
+            background-color: var(--vscode-editor-background);
+            padding: 20px;
+            line-height: 1.6;
+          }
+          .header {
+            border-bottom: 1px solid var(--vscode-panel-border);
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+          }
+          .metadata {
+            color: var(--vscode-descriptionForeground);
+            font-size: 0.9em;
+          }
+          .content {
+            margin: 20px 0;
+            background-color: var(--vscode-textBlockQuote-background);
+            padding: 15px;
+            border-radius: 4px;
+            border-left: 4px solid var(--vscode-textBlockQuote-border);
+          }
+          .raw-json-section {
+            margin-top: 30px;
+            border-top: 1px solid var(--vscode-panel-border);
+            padding-top: 20px;
+          }
+          .toggle-json-btn {
+            background-color: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+          }
+          .toggle-json-btn:hover {
+            background-color: var(--vscode-button-hoverBackground);
+          }
+          .json-content {
+            margin-top: 10px;
+            background-color: var(--vscode-editor-background);
+            border: 1px solid var(--vscode-panel-border);
+            border-radius: 4px;
+            padding: 15px;
+            overflow-x: auto;
+            max-height: 500px;
+            overflow-y: auto;
+          }
+          .json-content pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-break: break-word;
+          }
+          .arrow {
+            transition: transform 0.2s ease;
+            display: inline-block;
+          }
+          .arrow.down {
+            transform: rotate(90deg);
+          }
+          .ansi-bold { font-weight: bold; }
+          .ansi-red { color: #e74c3c; }
+          .ansi-green { color: #2ecc71; }
+          .ansi-yellow { color: #f1c40f; }
+          .ansi-blue { color: #3498db; }
+          .ansi-magenta { color: #9b59b6; }
+          .ansi-cyan { color: #1abc9c; }
+          .level-info { color: var(--vscode-textLink-foreground); }
+          .level-warning { color: #f1c40f; }
+          .level-error { color: #e74c3c; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <h1>SYSTEM ${message.level ? `<span class="level-${message.level}">[${message.level.toUpperCase()}]</span>` : ''}</h1>
+          <div class="metadata">
+            ${message.sessionId ? `<p>Session ID: ${message.sessionId}</p>` : ''}
+            <p>Timestamp: ${timestamp}</p>
+            ${message.uuid ? `<p>UUID: ${message.uuid}</p>` : ''}
+            ${message.toolUseID ? `<p>Tool Use ID: ${message.toolUseID}</p>` : ''}
+            ${message.gitBranch ? `<p>Git Branch: ${message.gitBranch}</p>` : ''}
+            ${message.cwd ? `<p>CWD: ${message.cwd}</p>` : ''}
+            ${message.version ? `<p>Version: ${message.version}</p>` : ''}
+            ${message.userType ? `<p>User Type: ${message.userType}</p>` : ''}
+          </div>
+        </div>
+        
+        <div class="content">
+          <p>${content}</p>
+        </div>
+
+        <div class="raw-json-section">
+          <button class="toggle-json-btn" onclick="toggleJsonView()">
+            <span class="arrow">▶</span>
+            <span>Show Raw JSON</span>
+          </button>
+          <div class="json-content" id="json-content" style="display: none;">
+            <pre><code>${this._escapeHtml(rawJson)}</code></pre>
+          </div>
+        </div>
+
+        <script>
+          function toggleJsonView() {
+            const jsonContent = document.getElementById('json-content');
+            const button = document.querySelector('.toggle-json-btn');
+            const arrow = button.querySelector('.arrow');
+            const text = button.querySelector('span:last-child');
+            
+            if (jsonContent.style.display === 'none') {
+              jsonContent.style.display = 'block';
+              arrow.classList.add('down');
+              text.textContent = 'Hide Raw JSON';
+            } else {
+              jsonContent.style.display = 'none';
+              arrow.classList.remove('down');
+              text.textContent = 'Show Raw JSON';
+            }
+          }
+        </script>
       </body>
       </html>
     `;

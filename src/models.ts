@@ -5,7 +5,8 @@ export interface TranscriptEntry {
   cwd?: string;
   sessionId?: string;
   version?: string;
-  type: 'user' | 'assistant' | 'summary';
+  gitBranch?: string;
+  type: 'user' | 'assistant' | 'summary' | 'system';
   uuid?: string;
   timestamp?: string;
   message?: Message;
@@ -14,6 +15,11 @@ export interface TranscriptEntry {
   // Summary-specific fields
   summary?: string;
   leafUuid?: string;
+  // System message fields
+  content?: string;
+  isMeta?: boolean;
+  toolUseID?: string;
+  level?: string;
 }
 
 export interface Message {
