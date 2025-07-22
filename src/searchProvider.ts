@@ -15,7 +15,7 @@ export class SearchProvider {
   private searchHistory: SearchHistory;
 
   constructor(
-    private context: vscode.ExtensionContext,
+    context: vscode.ExtensionContext,
     private logTreeProvider: LogTreeProvider
   ) {
     this.searchHistory = new SearchHistory(context);
@@ -226,9 +226,18 @@ export class SearchProvider {
     // Show the log detail view
     await vscode.commands.executeCommand('claudeLogNavigator.openLogDetail', message);
 
-    // TODO: Once we add selection support to the tree view, we can also:
-    // 1. Expand the session in the tree
-    // 2. Select the message item
-    // 3. Scroll to make it visible
+    // Select and reveal the message in the tree view
+    if (session.sessionId) {
+      // If message has no UUID, find its index in the session
+      if (!message.uuid) {
+        const messageIndex = session.messages.findIndex(m => m === message);
+        if (messageIndex !== -1) {
+          // Pass a unique identifier based on index
+          await this.logTreeProvider.selectMessageByIndex(session.sessionId, messageIndex);
+        }
+      } else {
+        await this.logTreeProvider.selectMessage(session.sessionId, message.uuid);
+      }
+    }
   }
 }

@@ -16,6 +16,9 @@ export function activate(context: vscode.ExtensionContext) {
     showCollapseAll: true
   });
 
+  // Set tree view reference
+  logTreeProvider.setTreeView(treeView);
+
   // Set context for when clause
   projectDetector.hasClaudeProject().then(hasProject => {
     console.log('Has Claude project:', hasProject);

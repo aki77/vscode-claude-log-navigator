@@ -9,6 +9,7 @@ A Visual Studio Code extension that helps you navigate and view Claude Code logs
 - **Automatic Project Detection**: Automatically detects Claude projects in your workspace and loads corresponding log files
 - **Conversation History**: Browse all your Claude conversation sessions with timestamps and summaries
 - **Message Details**: View detailed message content with syntax highlighting and structured display
+- **Search Functionality**: Search through messages with search history and direct navigation to results in the tree view
 - **Usage Analytics**: Track token usage and cost information for each conversation
 - **Date Filtering**: Filter conversations by date ranges (today, yesterday, this week, this month, or custom range)
 - **Cost Calculation**: Automatic cost calculation based on model usage and service tiers
@@ -43,6 +44,7 @@ You can adjust this setting in VS Code preferences to control how many log files
 - **Refresh**: Reload log files from the Claude projects directory
 - **Filter by Date**: Filter conversations by various date ranges
 - **Clear Filter**: Remove any applied date filters
+- **Search Messages**: Search through conversation messages with history tracking
 - **Open Log Detail**: View detailed message content (available in context menu)
 
 ## Known Issues

@@ -15,10 +15,17 @@ export class LogTreeProvider implements vscode.TreeDataProvider<TreeItem> {
   private initialized: boolean = false;
   private initializing: boolean = false;
   private initializationError?: string;
+  private treeView?: vscode.TreeView<TreeItem>;
+  private sessionItemCache: Map<string, SessionTreeItem> = new Map();
+  private messageItemCache: Map<string, MessageTreeItem> = new Map();
 
   constructor() {
     this.projectDetector = new ProjectDetector();
     // initialize() call removed - now lazy loaded
+  }
+
+  setTreeView(treeView: vscode.TreeView<TreeItem>): void {
+    this.treeView = treeView;
   }
 
   private async initialize(): Promise<void> {
@@ -65,18 +72,27 @@ export class LogTreeProvider implements vscode.TreeDataProvider<TreeItem> {
     this.initialized = false;
     this.initializing = false;
     this.initializationError = undefined;
+    // Clear caches when refreshing
+    this.sessionItemCache.clear();
+    this.messageItemCache.clear();
     await this.lazyInitialize();
   }
 
   async applyDateFilter(filter: DateFilter): Promise<void> {
     this.dateFilter = filter;
     await this.loadSessions();
+    // Clear caches when filter changes
+    this.sessionItemCache.clear();
+    this.messageItemCache.clear();
     this._onDidChangeTreeData.fire();
   }
 
   async clearFilter(): Promise<void> {
     this.dateFilter = undefined;
     await this.loadSessions();
+    // Clear caches when filter changes
+    this.sessionItemCache.clear();
+    this.messageItemCache.clear();
     this._onDidChangeTreeData.fire();
   }
 
@@ -118,17 +134,55 @@ export class LogTreeProvider implements vscode.TreeDataProvider<TreeItem> {
       }
       
       // Return sessions
-      const sessionItems = this.sessions.map(session => new SessionTreeItem(session));
+      const sessionItems = this.sessions.map(session => {
+        const cached = this.sessionItemCache.get(session.sessionId);
+        if (cached) {
+          return cached;
+        }
+        const item = new SessionTreeItem(session);
+        this.sessionItemCache.set(session.sessionId, item);
+        return item;
+      });
       console.log('LogTreeProvider: Returning session items:', sessionItems.length);
       return Promise.resolve(sessionItems);
     } else if (element instanceof SessionTreeItem) {
       // Session level - return messages
-      const messageItems = element.session.messages.map(message => new MessageTreeItem(message));
+      const messageItems = element.session.messages.map((message, index) => {
+        const cacheKey = message.uuid 
+          ? `${element.session.sessionId}-${message.uuid}`
+          : `${element.session.sessionId}-idx${index}`;
+        const cached = this.messageItemCache.get(cacheKey);
+        if (cached && cached.message === message && cached.messageIndex === index) {
+          return cached;
+        }
+        const item = new MessageTreeItem(message, element.session.sessionId, index);
+        this.messageItemCache.set(cacheKey, item);
+        return item;
+      });
       console.log('LogTreeProvider: Returning message items:', messageItems.length);
       return Promise.resolve(messageItems);
     }
 
     return Promise.resolve([]);
+  }
+
+  getParent(element: TreeItem): TreeItem | undefined {
+    if (element instanceof MessageTreeItem) {
+      // Find the parent session for this message
+      const session = this.sessions.find(s => s.sessionId === element.sessionId);
+      if (session) {
+        // Return cached session item or create new one
+        let sessionItem = this.sessionItemCache.get(session.sessionId);
+        if (!sessionItem) {
+          sessionItem = new SessionTreeItem(session);
+          this.sessionItemCache.set(session.sessionId, sessionItem);
+        }
+        return sessionItem;
+      }
+    }
+    // Sessions are at root level, so they have no parent
+    // LoadingTreeItem and ErrorTreeItem also have no parent
+    return undefined;
   }
 
   getSession(sessionId: string): LogSession | undefined {
@@ -143,6 +197,152 @@ export class LogTreeProvider implements vscode.TreeDataProvider<TreeItem> {
   updateMaxFiles(maxFiles: number): void {
     if (this.logFileParser) {
       this.logFileParser.updateMaxFiles(maxFiles);
+    }
+  }
+
+  async selectMessage(sessionId: string, messageId: string): Promise<void> {
+    if (!this.treeView) {
+      console.warn('TreeView not initialized');
+      return;
+    }
+
+    // Find the session and message
+    const session = this.sessions.find(s => s.sessionId === sessionId);
+    if (!session) {
+      console.warn(`Session ${sessionId} not found`);
+      return;
+    }
+
+    const messageIndex = session.messages.findIndex(m => m.uuid === messageId);
+    if (messageIndex === -1) {
+      console.warn(`Message ${messageId} not found in session ${sessionId}`);
+      return;
+    }
+    
+    const message = session.messages[messageIndex];
+
+    // Get cached tree items or create new ones
+    let sessionItem = this.sessionItemCache.get(sessionId);
+    if (!sessionItem) {
+      sessionItem = new SessionTreeItem(session);
+      this.sessionItemCache.set(sessionId, sessionItem);
+    }
+
+    const messageCacheKey = message.uuid 
+      ? `${sessionId}-${message.uuid}`
+      : `${sessionId}-idx${messageIndex}`;
+    let messageItem = this.messageItemCache.get(messageCacheKey);
+    if (!messageItem) {
+      messageItem = new MessageTreeItem(message, sessionId, messageIndex);
+      this.messageItemCache.set(messageCacheKey, messageItem);
+    }
+
+    try {
+      // First reveal and expand the session
+      await this.treeView.reveal(sessionItem, {
+        select: false,
+        focus: false,
+        expand: true
+      });
+
+      // Then reveal and select the message
+      await this.treeView.reveal(messageItem, {
+        select: true,
+        focus: true,
+        expand: false
+      });
+    } catch (error) {
+      console.error('Failed to reveal tree item:', error);
+    }
+  }
+
+  async expandSession(sessionId: string): Promise<void> {
+    if (!this.treeView) {
+      console.warn('TreeView not initialized');
+      return;
+    }
+
+    const session = this.sessions.find(s => s.sessionId === sessionId);
+    if (!session) {
+      console.warn(`Session ${sessionId} not found`);
+      return;
+    }
+
+    // Get cached tree item or create new one
+    let sessionItem = this.sessionItemCache.get(sessionId);
+    if (!sessionItem) {
+      sessionItem = new SessionTreeItem(session);
+      this.sessionItemCache.set(sessionId, sessionItem);
+    }
+
+    try {
+      await this.treeView.reveal(sessionItem, {
+        select: true,
+        focus: true,
+        expand: true
+      });
+    } catch (error) {
+      console.error('Failed to expand session:', error);
+    }
+  }
+
+  async revealMessage(sessionId: string, messageId: string): Promise<void> {
+    // This is an alias for selectMessage for better API clarity
+    await this.selectMessage(sessionId, messageId);
+  }
+
+  async selectMessageByIndex(sessionId: string, messageIndex: number): Promise<void> {
+    if (!this.treeView) {
+      console.warn('TreeView not initialized');
+      return;
+    }
+
+    // Find the session
+    const session = this.sessions.find(s => s.sessionId === sessionId);
+    if (!session) {
+      console.warn(`Session ${sessionId} not found`);
+      return;
+    }
+
+    if (messageIndex < 0 || messageIndex >= session.messages.length) {
+      console.warn(`Message index ${messageIndex} out of bounds for session ${sessionId}`);
+      return;
+    }
+    
+    const message = session.messages[messageIndex];
+
+    // Get cached tree items or create new ones
+    let sessionItem = this.sessionItemCache.get(sessionId);
+    if (!sessionItem) {
+      sessionItem = new SessionTreeItem(session);
+      this.sessionItemCache.set(sessionId, sessionItem);
+    }
+
+    const messageCacheKey = message.uuid 
+      ? `${sessionId}-${message.uuid}`
+      : `${sessionId}-idx${messageIndex}`;
+    let messageItem = this.messageItemCache.get(messageCacheKey);
+    if (!messageItem) {
+      messageItem = new MessageTreeItem(message, sessionId, messageIndex);
+      this.messageItemCache.set(messageCacheKey, messageItem);
+    }
+
+    try {
+      // First reveal and expand the session
+      await this.treeView.reveal(sessionItem, {
+        select: false,
+        focus: false,
+        expand: true
+      });
+
+      // Then reveal and select the message
+      await this.treeView.reveal(messageItem, {
+        select: true,
+        focus: true,
+        expand: false
+      });
+    } catch (error) {
+      console.error('Failed to reveal tree item:', error);
     }
   }
 }
@@ -168,6 +368,7 @@ export class SessionTreeItem extends TreeItem {
       vscode.TreeItemCollapsibleState.Collapsed
     );
 
+    this.id = `session-${session.sessionId}`;
     this.description = session.summary;
     this.tooltip = `${session.summary}\n\nSession ID: ${session.sessionId}\nMessages: ${session.messages.length}\nTokens: ${session.totalTokens}\nCost: ${formatCostSummary(session.totalCost)}\nDuration: ${durationMinutes} minutes`;
     this.iconPath = new vscode.ThemeIcon('history');
@@ -176,7 +377,7 @@ export class SessionTreeItem extends TreeItem {
 }
 
 export class MessageTreeItem extends TreeItem {
-  constructor(public readonly message: TranscriptEntry) {
+  constructor(public readonly message: TranscriptEntry, public readonly sessionId: string, public readonly messageIndex: number) {
     let label: string;
     if (message.type === 'summary') {
       label = `Summary - ${message.summary || 'Session Summary'}`;
@@ -190,6 +391,14 @@ export class MessageTreeItem extends TreeItem {
     
     super(label, vscode.TreeItemCollapsibleState.None);
 
+    // Use uuid if available, otherwise fall back to index-based ID
+    if (message.uuid) {
+      this.id = `message-${sessionId}-${message.uuid}`;
+    } else {
+      // Use index as fallback for messages without UUID
+      this.id = `message-${sessionId}-idx${messageIndex}`;
+    }
+    
     this.description = this.getMessagePreview();
     this.tooltip = this.getMessageTooltip();
     this.iconPath = this.getMessageIcon();

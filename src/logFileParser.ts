@@ -14,17 +14,48 @@ export class LogFileParser {
 
   async parseLogFiles(dateFilter?: DateFilter): Promise<LogSession[]> {
     const logFiles = await this.getLogFiles();
-    const sessions: LogSession[] = [];
+    const sessionMap = new Map<string, LogSession>();
 
     for (const logFile of logFiles) {
       const session = await this.parseLogFileToSession(logFile);
       if (session) {
         // Apply date filter if specified
         if (!dateFilter || this.sessionMatchesDateFilter(session, dateFilter)) {
-          sessions.push(session);
+          // Check if we already have a session with this ID
+          const existingSession = sessionMap.get(session.sessionId);
+          if (existingSession) {
+            // Merging duplicate session with same ID
+            // Merge messages from both sessions
+            existingSession.messages.push(...session.messages);
+            // Update end time if this session is newer
+            if (session.endTime > existingSession.endTime) {
+              existingSession.endTime = session.endTime;
+            }
+            // Update start time if this session is older
+            if (session.startTime < existingSession.startTime) {
+              existingSession.startTime = session.startTime;
+            }
+            // Update totals
+            existingSession.totalTokens += session.totalTokens;
+            existingSession.totalCost += session.totalCost;
+          } else {
+            sessionMap.set(session.sessionId, session);
+          }
         }
       }
     }
+
+    // Convert map to array and sort messages within each session
+    const sessions = Array.from(sessionMap.values());
+    sessions.forEach(session => {
+      // Sort messages by timestamp within each session
+      session.messages.sort((a, b) => {
+        if (!a.timestamp || !b.timestamp) {
+          return 0;
+        }
+        return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+      });
+    });
 
     // Sort sessions by start time (newest first)
     sessions.sort((a, b) => b.startTime.getTime() - a.startTime.getTime());
