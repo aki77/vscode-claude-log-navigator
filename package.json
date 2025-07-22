@@ -2,7 +2,7 @@
   "name": "claude-log-navigator",
   "displayName": "Claude Log Navigator",
   "description": "Navigate and view Claude Code logs in VSCode",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "aki77",
   "license": "MIT",
   "engines": {
