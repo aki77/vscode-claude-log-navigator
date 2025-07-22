@@ -3,10 +3,12 @@ import { LogTreeProvider } from './logTreeProvider';
 import { LogDetailPanel } from './logDetailPanel';
 import { ProjectDetector } from './projectDetector';
 import { TranscriptEntry, DateFilter } from './models';
+import { SearchProvider } from './searchProvider';
 
 export function activate(context: vscode.ExtensionContext) {
   const projectDetector = new ProjectDetector();
   const logTreeProvider = new LogTreeProvider();
+  const searchProvider = new SearchProvider(context, logTreeProvider);
 
   // Register tree view
   const treeView = vscode.window.createTreeView('claudeLogNavigator', {
@@ -80,13 +82,18 @@ export function activate(context: vscode.ExtensionContext) {
     LogDetailPanel.createOrShow(context.extensionUri, message);
   });
 
+  const searchLogsCommand = vscode.commands.registerCommand('claudeLogNavigator.searchLogs', () => {
+    searchProvider.showSearchQuickPick();
+  });
+
   // Register disposables
   context.subscriptions.push(
     treeView,
     refreshCommand,
     filterByDateCommand,
     clearFilterCommand,
-    openLogDetailCommand
+    openLogDetailCommand,
+    searchLogsCommand
   );
 
   // Watch for workspace changes

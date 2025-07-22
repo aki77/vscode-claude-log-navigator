@@ -57,6 +57,11 @@
         "command": "claudeLogNavigator.clearFilter",
         "title": "Clear Filter",
         "icon": "$(clear-all)"
+      },
+      {
+        "command": "claudeLogNavigator.searchLogs",
+        "title": "Search Logs",
+        "icon": "$(search)"
       }
     ],
     "menus": {
@@ -73,6 +78,11 @@
         },
         {
           "command": "claudeLogNavigator.clearFilter",
+          "when": "view == claudeLogNavigator",
+          "group": "navigation"
+        },
+        {
+          "command": "claudeLogNavigator.searchLogs",
           "when": "view == claudeLogNavigator",
           "group": "navigation"
         }
